@@ -1,54 +1,68 @@
 const express = require('express');
-const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
-
-// Initialisation
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+const http = require('http').createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(http);
 
-// Middleware pour servir les fichiers statiques (HTML/CSS/JS)
+const path = require('path');
+const PORT = process.env.PORT || 3000;
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Connexion Socket.IO
+const rooms = new Map();
+
 io.on('connection', (socket) => {
-  console.log('Nouvelle connexion WebSocket :', socket.id);
-
-  // Réception de la demande de rejoindre une room
-  socket.on('joinRoom', ({ username, room }) => {
+  socket.on('join room', ({ username, room }) => {
+    socket.username = username;
+    socket.room = room;
     socket.join(room);
-    socket.data.username = username;
-    socket.data.room = room;
 
-    // Message de bienvenue
-    socket.emit('chat message', `✅ Bienvenue ${username} dans le salon "${room}"`);
+    if (!rooms.has(room)) rooms.set(room, new Set());
+    rooms.get(room).add(username);
 
-    // Notifier les autres utilisateurs du salon
-    socket.to(room).emit('chat message', `ℹ️ ${username} a rejoint le salon`);
+    socket.to(room).emit('chat message', {
+      user: 'Système',
+      text: `${username} a rejoint le salon.`,
+    });
+
+    io.emit('update rooms', getRoomData());
   });
 
-  // Réception d'un message depuis le client
   socket.on('chat message', (msg) => {
-    const { username, room } = socket.data;
-
-    if (!username || !room) return; // sécurité
-
-    // Diffusion du message dans le salon uniquement
-    io.to(room).emit('chat message', `💬 ${username} : ${msg}`);
+    if (socket.room && socket.username) {
+      io.to(socket.room).emit('chat message', {
+        user: socket.username,
+        text: msg,
+      });
+    }
   });
 
-  // Déconnexion
   socket.on('disconnect', () => {
-    const { username, room } = socket.data || {};
-    if (username && room) {
-      socket.to(room).emit('chat message', `❌ ${username} a quitté le salon`);
+    if (socket.room && socket.username) {
+      const roomSet = rooms.get(socket.room);
+      if (roomSet) {
+        roomSet.delete(socket.username);
+        if (roomSet.size === 0) rooms.delete(socket.room);
+      }
+
+      socket.to(socket.room).emit('chat message', {
+        user: 'Système',
+        text: `${socket.username} a quitté le salon.`,
+      });
+
+      io.emit('update rooms', getRoomData());
     }
   });
 });
 
-// Lancer le serveur
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+function getRoomData() {
+  const result = [];
+  for (const [room, users] of rooms.entries()) {
+    result.push({ room, users: Array.from(users) });
+  }
+  return result;
+}
+
+http.listen(PORT, () => {
   console.log(`✅ Serveur démarré sur http://localhost:${PORT}`);
 });
