@@ -14,7 +14,9 @@ const PORT = process.env.PORT || 3000;
 const adminUser = process.env.ADMIN_USER;
 const adminPass = process.env.ADMIN_PASS;
 const usersFile = path.join(__dirname, 'users.json');
-const roomsFile = path.join(__dirname, 'rooms.json');
+
+// --- Gestion des salons en mémoire ---
+const roomsData = new Map();
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -38,23 +40,8 @@ const loginLimiter = rateLimit({
   message: "Trop de tentatives, veuillez réessayer plus tard."
 });
 
-// --- Gestion des salons dans fichier JSON ---
-
-function loadRooms() {
-  if (!fs.existsSync(roomsFile)) {
-    fs.writeFileSync(roomsFile, JSON.stringify([]));
-  }
-  const data = fs.readFileSync(roomsFile);
-  return JSON.parse(data);
-}
-
-function saveRooms(rooms) {
-  fs.writeFileSync(roomsFile, JSON.stringify(rooms, null, 2));
-}
-
 // --- Routes existantes ---
 
-// Authentification unique (admin + user)
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
@@ -79,7 +66,6 @@ app.post('/login', loginLimiter, (req, res) => {
   return res.redirect('/?error=1');
 });
 
-// Accès sécurisé à admin.html
 app.get('/admin.html', (req, res, next) => {
   if (req.session.isAdmin) {
     next(); // autorisé
@@ -88,7 +74,6 @@ app.get('/admin.html', (req, res, next) => {
   }
 });
 
-// Création de compte utilisateur
 app.post('/register', (req, res) => {
   const { username, password } = req.body;
 
@@ -111,89 +96,68 @@ app.post('/register', (req, res) => {
   res.send('<script>alert("Compte créé avec succès ! Vous pouvez maintenant vous connecter."); window.location.href="/";</script>');
 });
 
-// Fichiers statiques
-app.use(express.static(path.join(__dirname, 'public')));
+// --- API pour gestion des salons ---
 
-// --- Nouvelles routes API pour gestion des salons ---
-
-// Récupérer la liste des salons d’un utilisateur
+// Récupérer tous les salons avec info propriétaire
 app.get('/api/user-rooms', (req, res) => {
   const username = req.query.username;
-  if (!username) return res.status(400).json([]);
+  if (!username) return res.status(400).json({ error: 'Username required' });
 
-  const rooms = loadRooms();
-
-  const userRooms = rooms
-    .filter(r => r.users.includes(username))
-    .map(r => ({
-      name: r.name,
-      isOwner: r.owner === username
-    }));
-
-  res.json(userRooms);
+  const rooms = [];
+  for (const [roomName, data] of roomsData.entries()) {
+    rooms.push({
+      name: roomName,
+      owner: data.owner,
+      isOwner: data.owner === username
+    });
+  }
+  res.json(rooms);
 });
 
 // Créer un salon
 app.post('/api/create-room', (req, res) => {
   const { roomName, username } = req.body;
-  if (!roomName || !username) return res.status(400).send('Champs requis');
+  if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
 
-  let rooms = loadRooms();
-
-  if (rooms.find(r => r.name === roomName)) {
-    return res.status(409).send('Salon existe déjà');
+  if (roomsData.has(roomName)) {
+    return res.status(409).json({ error: 'Room already exists' });
   }
 
-  rooms.push({
-    name: roomName,
-    owner: username,
-    users: [username]
-  });
-
-  saveRooms(rooms);
-  res.status(201).send('Salon créé');
+  roomsData.set(roomName, { owner: username, users: new Set() });
+  return res.status(201).json({ message: 'Room created' });
 });
 
-// Rejoindre un salon
+// Rejoindre un salon (ajout utilisateur en mémoire)
 app.post('/api/join-room', (req, res) => {
   const { roomName, username } = req.body;
-  if (!roomName || !username) return res.status(400).send('Champs requis');
+  if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
 
-  let rooms = loadRooms();
-  const room = rooms.find(r => r.name === roomName);
+  const room = roomsData.get(roomName);
+  if (!room) return res.status(404).json({ error: 'Room not found' });
 
-  if (!room) return res.status(404).send('Salon non trouvé');
-
-  if (!room.users.includes(username)) {
-    room.users.push(username);
-    saveRooms(rooms);
-  }
-
-  res.status(200).send('Rejoint salon');
+  room.users.add(username);
+  return res.status(200).json({ message: 'Joined room' });
 });
 
-// Supprimer un salon (seul propriétaire)
+// Supprimer un salon (seul propriétaire autorisé)
 app.post('/api/delete-room', (req, res) => {
   const { roomName, username } = req.body;
-  if (!roomName || !username) return res.status(400).send('Champs requis');
+  if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
 
-  let rooms = loadRooms();
-  const roomIndex = rooms.findIndex(r => r.name === roomName);
+  const room = roomsData.get(roomName);
+  if (!room) return res.status(404).json({ error: 'Room not found' });
 
-  if (roomIndex === -1) return res.status(404).send('Salon non trouvé');
+  if (room.owner !== username) return res.status(403).json({ error: 'Not authorized' });
 
-  if (rooms[roomIndex].owner !== username) {
-    return res.status(403).send('Non autorisé');
-  }
-
-  rooms.splice(roomIndex, 1);
-  saveRooms(rooms);
-  res.status(200).send('Salon supprimé');
+  roomsData.delete(roomName);
+  return res.status(200).json({ message: 'Room deleted' });
 });
 
-// --- WebSocket (Socket.io) ---
+// --- Static files ---
+app.use(express.static(path.join(__dirname, 'public')));
 
-const roomsMap = new Map();
+// --- Socket.io ---
+const rooms = new Map();
 
 io.on('connection', (socket) => {
   socket.on('join room', ({ username, room }) => {
@@ -201,12 +165,13 @@ io.on('connection', (socket) => {
     socket.room = room;
     socket.join(room);
 
-    if (!roomsMap.has(room)) roomsMap.set(room, new Set());
-    roomsMap.get(room).add(username);
+    if (!rooms.has(room)) rooms.set(room, new Set());
+    rooms.get(room).add(username);
 
     socket.to(room).emit('chat message', {
       user: 'Système',
       text: `${username} a rejoint le salon.`,
+      timestamp: new Date().toISOString()
     });
 
     io.emit('update rooms', getRoomData());
@@ -217,21 +182,23 @@ io.on('connection', (socket) => {
       io.to(socket.room).emit('chat message', {
         user: socket.username,
         text: msg,
+        timestamp: new Date().toISOString()
       });
     }
   });
 
   socket.on('disconnect', () => {
     if (socket.room && socket.username) {
-      const roomSet = roomsMap.get(socket.room);
+      const roomSet = rooms.get(socket.room);
       if (roomSet) {
         roomSet.delete(socket.username);
-        if (roomSet.size === 0) roomsMap.delete(socket.room);
+        if (roomSet.size === 0) rooms.delete(socket.room);
       }
 
       socket.to(socket.room).emit('chat message', {
         user: 'Système',
         text: `${socket.username} a quitté le salon.`,
+        timestamp: new Date().toISOString()
       });
 
       io.emit('update rooms', getRoomData());
@@ -241,7 +208,7 @@ io.on('connection', (socket) => {
 
 function getRoomData() {
   const result = [];
-  for (const [room, users] of roomsMap.entries()) {
+  for (const [room, users] of rooms.entries()) {
     result.push({ room, users: Array.from(users) });
   }
   return result;

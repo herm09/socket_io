@@ -33,6 +33,23 @@
       align-items: center;
     }
 
+    .room-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .room-name {
+      font-weight: bold;
+      font-size: 1.2rem;
+      color: #222;
+    }
+
+    .room-owner {
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: 0.2rem;
+    }
+
     .room-buttons button {
       margin-left: 0.5rem;
       padding: 0.5rem 1rem;
@@ -40,14 +57,22 @@
       border-radius: 4px;
       cursor: pointer;
       color: white;
+      font-weight: 600;
+      transition: background-color 0.3s ease;
     }
 
     .join-btn {
       background-color: #4caf50;
     }
+    .join-btn:hover {
+      background-color: #3a9e3a;
+    }
 
     .delete-btn {
       background-color: #f44336;
+    }
+    .delete-btn:hover {
+      background-color: #d32f2f;
     }
 
     #createForm {
@@ -62,6 +87,8 @@
       padding: 0.5rem;
       font-size: 1rem;
       flex: 1;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
 
     #createForm button {
@@ -72,12 +99,31 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.3s ease;
+    }
+    #createForm button:hover {
+      background-color: #1769aa;
     }
 
     #logout {
       display: block;
       text-align: center;
       margin-top: 2rem;
+    }
+
+    #logout button {
+      background-color: #666;
+      border: none;
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.3s ease;
+    }
+    #logout button:hover {
+      background-color: #444;
     }
   </style>
 </head>
@@ -89,7 +135,9 @@
     <button id="createRoomBtn">Créer un salon</button>
   </div>
 
-  <div id="roomList"></div>
+  <div id="roomList">
+    <!-- Les salons existants seront affichés ici -->
+  </div>
 
   <div id="logout">
     <button onclick="window.location.href='/'">Se déconnecter</button>
@@ -98,13 +146,21 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const username = urlParams.get('username');
-    document.getElementById('usernameDisplay').textContent = username;
-
     const roomListDiv = document.getElementById('roomList');
+    document.getElementById('usernameDisplay').textContent = username || '';
 
+    if (!username) {
+      alert("Session invalide. Redirection...");
+      window.location.href = "/";
+    }
+
+    // Fonction pour charger la liste des salons
     function fetchRooms() {
       fetch(`/api/user-rooms?username=${encodeURIComponent(username)}`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error('Erreur lors du chargement des salons');
+          return res.json();
+        })
         .then(rooms => {
           roomListDiv.innerHTML = '';
           if (rooms.length === 0) {
@@ -115,28 +171,44 @@
           rooms.forEach(room => {
             const div = document.createElement('div');
             div.className = 'room';
+
             div.innerHTML = `
-              <strong>${room.name}</strong>
+              <div class="room-info">
+                <div class="room-name">${room.name}</div>
+                <div class="room-owner">Créateur : ${room.owner}</div>
+              </div>
               <div class="room-buttons">
                 <button class="join-btn" onclick="joinRoom('${room.name}')">Rejoindre</button>
                 ${room.isOwner ? `<button class="delete-btn" onclick="deleteRoom('${room.name}')">Supprimer</button>` : ''}
               </div>
             `;
+
             roomListDiv.appendChild(div);
           });
+        })
+        .catch(err => {
+          roomListDiv.innerHTML = `<p style="color:red; text-align:center;">${err.message}</p>`;
         });
     }
 
+    // Fonction pour rejoindre un salon
     function joinRoom(roomName) {
       fetch('/api/join-room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomName, username })
-      }).then(() => {
-        window.location.href = `chat.html?username=${encodeURIComponent(username)}&room=${encodeURIComponent(roomName)}`;
+      }).then(res => {
+        if (res.ok) {
+          window.location.href = `chat.html?username=${encodeURIComponent(username)}&room=${encodeURIComponent(roomName)}`;
+        } else {
+          alert("Erreur lors de la tentative de rejoindre le salon.");
+        }
+      }).catch(() => {
+        alert("Erreur réseau.");
       });
     }
 
+    // Fonction pour supprimer un salon (uniquement par le créateur)
     function deleteRoom(roomName) {
       if (!confirm(`Supprimer le salon "${roomName}" ?`)) return;
 
@@ -147,12 +219,17 @@
       }).then(res => {
         if (res.ok) {
           fetchRooms();
+        } else if (res.status === 403) {
+          alert("Vous n'êtes pas autorisé à supprimer ce salon.");
         } else {
           alert("Erreur lors de la suppression.");
         }
+      }).catch(() => {
+        alert("Erreur réseau.");
       });
     }
 
+    // Création d'un nouveau salon
     document.getElementById('createRoomBtn').addEventListener('click', () => {
       const roomName = document.getElementById('newRoom').value.trim();
       if (!roomName) return alert("Veuillez entrer un nom de salon.");
@@ -170,16 +247,13 @@
         } else {
           alert("Erreur lors de la création du salon.");
         }
+      }).catch(() => {
+        alert("Erreur réseau.");
       });
     });
 
-    // Initial load
-    if (!username) {
-      alert("Session invalide. Redirection...");
-      window.location.href = "/";
-    } else {
-      fetchRooms();
-    }
+    // Chargement initial
+    fetchRooms();
   </script>
 </body>
 </html>
