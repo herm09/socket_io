@@ -22,6 +22,25 @@
       align-items: center;
     }
 
+    #header > div {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    #logoutBtn {
+      background: #d9534f;
+      border: none;
+      color: white;
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #logoutBtn:hover {
+      background: #c9302c;
+    }
+
     #form {
       background: rgba(0, 0, 0, 0.15);
       padding: 0.25rem;
@@ -68,17 +87,27 @@
 
     #messages > li {
       padding: 0.5rem 1rem;
+      font-size: 0.9rem;
     }
 
     #messages > li:nth-child(odd) {
       background: #efefef;
     }
+
+    .timestamp {
+      color: #666;
+      font-size: 0.75rem;
+      margin-left: 0.5rem;
+    }
   </style>
 </head>
 <body>
   <div id="header">
-    <div>👤 <span id="usernameDisplay"></span></div>
-    <div>🏠 <span id="roomDisplay"></span></div>
+    <div>
+      👤 <span id="usernameDisplay"></span>
+      🏠 <span id="roomDisplay"></span>
+    </div>
+    <button id="logoutBtn" type="button">Déconnexion</button>
   </div>
 
   <ul id="messages"></ul>
@@ -105,6 +134,11 @@
     document.getElementById('usernameDisplay').textContent = username;
     document.getElementById('roomDisplay').textContent = room;
 
+    // Déconnexion : redirection vers home_user.html avec username en query param
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      window.location.href = `/home_user.html?username=${encodeURIComponent(username)}`;
+    });
+
     // Envoyer au serveur les infos de connexion avec le bon événement 'join room'
     socket.emit('join room', { username, room });
 
@@ -120,12 +154,19 @@
       }
     });
 
+    // Fonction pour formater l'heure HH:mm
+    function formatTimestamp(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     socket.on('chat message', (msg) => {
-      console.log('Message reçu:', msg);
       const item = document.createElement('li');
-      item.textContent = `${msg.user} : ${msg.text}`;
+      const timestamp = formatTimestamp(new Date());
+
+      // Structure : User : Message [heure]
+      item.innerHTML = `<strong>${msg.user} :</strong> ${msg.text} <span class="timestamp">${timestamp}</span>`;
       messages.appendChild(item);
-      window.scrollTo(0, document.body.scrollHeight);
+      messages.scrollTop = messages.scrollHeight;
     });
   </script>
 </body>
