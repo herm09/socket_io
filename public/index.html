@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Socket.IO - Connexion</title>
+  <title>Connexion</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
@@ -43,41 +43,40 @@
     #userBtn {
       background-color: #4caf50;
     }
-    #adminBtn {
-      background-color: #f44336;
+    #registerBtn {
+      background-color: #2196f3;
       margin-top: 1rem;
     }
     h1 {
       margin-bottom: 2rem;
       color: #333;
     }
+    #error {
+      color: red;
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <form id="loginForm">
+  <form id="loginForm" method="POST" action="/login">
     <h1>Connexion</h1>
-    <input type="text" id="username" placeholder="Votre pseudo" required />
-    <input type="text" id="room" placeholder="Nom du salon" required />
-    <button id="userBtn" type="submit">Se connecter en utilisateur</button>
-    <p style="margin-top: 2rem;"><a href="admin_login.html">🔐 Connexion administrateur</a></p>
+    <input type="text" name="username" id="username" placeholder="Identifiant" required />
+    <input type="password" name="password" id="password" placeholder="Mot de passe" required />
+    <button id="userBtn" type="submit">Se connecter</button>
+    <button id="registerBtn" type="button">Créer un compte</button>
+    <div id="error">
+      <script>
+        if (window.location.search.includes('error=1')) {
+          document.write("Identifiants incorrects.");
+        }
+      </script>
+    </div>
   </form>
 
   <script>
-    const form = document.getElementById('loginForm');
-    const userBtn = document.getElementById('userBtn');
-    const adminBtn = document.getElementById('adminBtn');
-
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const room = document.getElementById('room').value.trim();
-      if (username && room) {
-        window.location.href = `chat.html?username=${encodeURIComponent(username)}&room=${encodeURIComponent(room)}`;
-      }
-    });
-
-    adminBtn.addEventListener('click', () => {
-      window.location.href = 'admin.html';
+    const registerBtn = document.getElementById('registerBtn');
+    registerBtn.addEventListener('click', () => {
+      window.location.href = 'register.html';
     });
   </script>
 </body>
