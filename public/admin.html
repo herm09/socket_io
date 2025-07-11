@@ -1,41 +1,127 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Admin</title>
+  <title>Panneau Administrateur</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; background: #f5f5f5; }
-    .room { margin-bottom: 1.5rem; padding: 1rem; background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .room h2 { margin-bottom: 0.5rem; }
-    .user { margin-left: 1rem; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 2rem;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+
+    #roomList {
+      max-width: 800px;
+      margin: 2rem auto;
+    }
+
+    .room {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .room-info {
+      flex: 1;
+    }
+
+    .room-buttons button {
+      margin-left: 0.5rem;
+      padding: 0.4rem 0.8rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: white;
+    }
+
+    .view-btn {
+      background-color: #2196f3;
+    }
+
+    .delete-btn {
+      background-color: #f44336;
+    }
+
+    #logout {
+      text-align: center;
+      margin-top: 2rem;
+    }
   </style>
 </head>
 <body>
-  <h1>📊 Admin — Les Salons</h1>
-  <div id="rooms"></div>
+  <h1>Panneau d’administration – Salons</h1>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <div id="roomList"></div>
+
+  <div id="logout">
+    <button onclick="window.location.href='/'">Déconnexion</button>
+  </div>
+
   <script>
-    const socket = io();
+    function fetchAllRooms() {
+      fetch('/api/admin-rooms')
+        .then(res => res.json())
+        .then(rooms => {
+          const roomList = document.getElementById('roomList');
+          roomList.innerHTML = '';
 
-    const roomsDiv = document.getElementById('rooms');
+          if (!rooms.length) {
+            roomList.innerHTML = '<p style="text-align:center;">Aucun salon existant.</p>';
+            return;
+          }
 
-    socket.on('update rooms', (roomsData) => {
-      roomsDiv.innerHTML = '';
-      roomsData.forEach(({ room, users }) => {
-        const roomEl = document.createElement('div');
-        roomEl.classList.add('room');
-        roomEl.innerHTML = `<h2>Room: ${room} (${users.length} users)</h2>`;
-        users.forEach(user => {
-          const userEl = document.createElement('div');
-          userEl.classList.add('user');
-          userEl.textContent = `👤 ${user}`;
-          roomEl.appendChild(userEl);
+          rooms.forEach(room => {
+            const div = document.createElement('div');
+            div.className = 'room';
+            div.innerHTML = `
+              <div class="room-info">
+                <strong>${room.name}</strong> — Créateur : ${room.owner} — Utilisateurs connectés : ${room.userCount || 0}
+              </div>
+              <div class="room-buttons">
+                <button class="view-btn" onclick="viewRoom('${room.name}')">Voir</button>
+                <button class="delete-btn" onclick="deleteRoom('${room.name}')">Supprimer</button>
+              </div>
+            `;
+            roomList.appendChild(div);
+          });
         });
-        roomsDiv.appendChild(roomEl);
+    }
+
+    function viewRoom(roomName) {
+      // Accès lecture seule : l’admin rejoint la room en tant que "admin_viewer" (non interactif)
+      window.location.href = `chat.html?username=admin_viewer&room=${encodeURIComponent(roomName)}&readonly=true`;
+    }
+
+    function deleteRoom(roomName) {
+      if (!confirm(`Supprimer le salon "${roomName}" ?`)) return;
+
+      fetch('/api/delete-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName, username: 'admin' })
+      }).then(res => {
+        if (res.ok) {
+          fetchAllRooms();
+        } else {
+          alert('Erreur lors de la suppression.');
+        }
       });
-    });
+    }
+
+    // Initialisation
+    fetchAllRooms();
   </script>
 </body>
 </html>

@@ -125,19 +125,30 @@
     const username = params.get('username');
     const room = params.get('room');
 
+    const isReadonly = params.get('readonly') === 'true';
+
     if (!username || !room) {
       alert('Nom d’utilisateur ou salon manquant.');
       window.location.href = '/';
+    }
+
+    // Si lecture seule, on masque le formulaire d’envoi
+    if (isReadonly) {
+      document.getElementById('form').style.display = 'none';
     }
 
     // Affichage header
     document.getElementById('usernameDisplay').textContent = username;
     document.getElementById('roomDisplay').textContent = room;
 
-    // Déconnexion : redirection vers home_user.html avec username en query param
     document.getElementById('logoutBtn').addEventListener('click', () => {
-      window.location.href = `/home_user.html?username=${encodeURIComponent(username)}`;
+      if (username === 'admin_viewer') {
+        window.location.href = `/admin.html?username=${encodeURIComponent(username)}`;
+      } else {
+        window.location.href = `/home_user.html?username=${encodeURIComponent(username)}`;
+      }
     });
+
 
     // Envoyer au serveur les infos de connexion avec le bon événement 'join room'
     socket.emit('join room', { username, room });

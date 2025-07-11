@@ -15,8 +15,8 @@ const adminUser = process.env.ADMIN_USER;
 const adminPass = process.env.ADMIN_PASS;
 const usersFile = path.join(__dirname, 'users.json');
 
-// --- Gestion des salons en mémoire ---
 const roomsData = new Map();
+const rooms = new Map();
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -28,30 +28,26 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: false, // true en production avec HTTPS
+    secure: false,
     maxAge: 60 * 60 * 1000
   }
 }));
 
-// Limiteur de tentative de connexion
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
   message: "Trop de tentatives, veuillez réessayer plus tard."
 });
 
-// --- Routes existantes ---
-
+// --- Routes Auth ---
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
-  // Vérification admin
   if (username === adminUser && password === adminPass) {
     req.session.isAdmin = true;
     return res.redirect('/admin.html');
   }
 
-  // Vérification utilisateur normal
   if (!username || !password) return res.redirect('/?error=1');
 
   let users = {};
@@ -68,9 +64,9 @@ app.post('/login', loginLimiter, (req, res) => {
 
 app.get('/admin.html', (req, res, next) => {
   if (req.session.isAdmin) {
-    next(); // autorisé
+    next();
   } else {
-    res.redirect('/admin_login.html');
+    res.redirect('/?error=unauthorized');
   }
 });
 
@@ -96,9 +92,7 @@ app.post('/register', (req, res) => {
   res.send('<script>alert("Compte créé avec succès ! Vous pouvez maintenant vous connecter."); window.location.href="/";</script>');
 });
 
-// --- API pour gestion des salons ---
-
-// Récupérer tous les salons avec info propriétaire
+// --- API Salons ---
 app.get('/api/user-rooms', (req, res) => {
   const username = req.query.username;
   if (!username) return res.status(400).json({ error: 'Username required' });
@@ -114,7 +108,16 @@ app.get('/api/user-rooms', (req, res) => {
   res.json(rooms);
 });
 
-// Créer un salon
+app.get('/api/admin-rooms', (req, res) => {
+  const rooms = readJSON('rooms.json');
+  const result = Object.values(rooms).map(room => ({
+    name: room.name,
+    owner: room.owner,
+    users: room.users.length,
+  }));
+  res.json(result);
+});
+
 app.post('/api/create-room', (req, res) => {
   const { roomName, username } = req.body;
   if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
@@ -127,7 +130,6 @@ app.post('/api/create-room', (req, res) => {
   return res.status(201).json({ message: 'Room created' });
 });
 
-// Rejoindre un salon (ajout utilisateur en mémoire)
 app.post('/api/join-room', (req, res) => {
   const { roomName, username } = req.body;
   if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
@@ -139,7 +141,6 @@ app.post('/api/join-room', (req, res) => {
   return res.status(200).json({ message: 'Joined room' });
 });
 
-// Supprimer un salon (seul propriétaire autorisé)
 app.post('/api/delete-room', (req, res) => {
   const { roomName, username } = req.body;
   if (!roomName || !username) return res.status(400).json({ error: 'Missing parameters' });
@@ -147,45 +148,54 @@ app.post('/api/delete-room', (req, res) => {
   const room = roomsData.get(roomName);
   if (!room) return res.status(404).json({ error: 'Room not found' });
 
-  if (room.owner !== username) return res.status(403).json({ error: 'Not authorized' });
+  if (room.owner !== username && username !== 'admin') {
+    return res.status(403).json({ error: 'Not authorized' });
+  }
 
   roomsData.delete(roomName);
   return res.status(200).json({ message: 'Room deleted' });
 });
 
-// --- Static files ---
+// --- Static ---
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Socket.io ---
-const rooms = new Map();
-
 io.on('connection', (socket) => {
   socket.on('join room', ({ username, room }) => {
+    if (!username || !room) return;
+
     socket.username = username;
     socket.room = room;
     socket.join(room);
 
+    const isAdminViewer = username === 'admin_viewer';
+
     if (!rooms.has(room)) rooms.set(room, new Set());
     rooms.get(room).add(username);
 
-    socket.to(room).emit('chat message', {
-      user: 'Système',
-      text: `${username} a rejoint le salon.`,
-      timestamp: new Date().toISOString()
-    });
+    if (!isAdminViewer) {
+      socket.to(room).emit('chat message', {
+        user: 'Système',
+        text: `${username} a rejoint le salon.`,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     io.emit('update rooms', getRoomData());
   });
 
-  socket.on('chat message', (msg) => {
-    if (socket.room && socket.username) {
-      io.to(socket.room).emit('chat message', {
-        user: socket.username,
-        text: msg,
-        timestamp: new Date().toISOString()
-      });
-    }
+socket.on('chat message', (msg) => {
+  if (!socket.room || !socket.username || !msg.trim()) return;
+
+  if (socket.username === 'admin_viewer') return;
+
+  io.to(socket.room).emit('chat message', {
+    user: socket.username,
+    text: msg,
+    timestamp: new Date().toISOString()
   });
+});
+
 
   socket.on('disconnect', () => {
     if (socket.room && socket.username) {
@@ -195,11 +205,13 @@ io.on('connection', (socket) => {
         if (roomSet.size === 0) rooms.delete(socket.room);
       }
 
-      socket.to(socket.room).emit('chat message', {
-        user: 'Système',
-        text: `${socket.username} a quitté le salon.`,
-        timestamp: new Date().toISOString()
-      });
+      if (socket.username !== 'admin_viewer') {
+        socket.to(socket.room).emit('chat message', {
+          user: 'Système',
+          text: `${socket.username} a quitté le salon.`,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       io.emit('update rooms', getRoomData());
     }
@@ -214,7 +226,13 @@ function getRoomData() {
   return result;
 }
 
-// Démarrage serveur
+function readJSON(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const content = fs.readFileSync(filePath, 'utf8');
+  return JSON.parse(content);
+}
+
+// Lancer le serveur
 http.listen(PORT, () => {
   console.log(`✅ Serveur démarré sur http://localhost:${PORT}`);
 });
