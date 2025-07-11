@@ -24,14 +24,15 @@ const roomMessages = new Map();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+app.set('trust proxy', 1);
+
 app.use(session({
   secret: 'secretadmin',
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: false,
-    maxAge: 60 * 60 * 1000
+    secure: process.env.NODE_ENV === 'production'    maxAge: 60 * 60 * 1000
   }
 }));
 
