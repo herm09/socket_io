@@ -195,6 +195,10 @@ io.on('connection', (socket) => {
       socket.to(room).emit('chat message', systemMsg);
     }
 
+    // Émettre la liste des utilisateurs de la room à TOUS les clients dans la room
+    const activeUsers = Array.from(rooms.get(room)).filter(u => u !== 'admin_viewer');
+    io.to(room).emit('room users', activeUsers);
+
     io.emit('update rooms', getRoomData());
   });
 
@@ -237,10 +241,16 @@ io.on('connection', (socket) => {
         socket.to(socket.room).emit('chat message', systemMsg);
       }
 
+      if (roomSet) {
+        const activeUsers = Array.from(roomSet).filter(u => u !== 'admin_viewer');
+        io.to(socket.room).emit('room users', activeUsers);
+      }
+
       io.emit('update rooms', getRoomData());
     }
   });
 });
+
 
 function getRoomData() {
   const result = [];
