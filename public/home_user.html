@@ -136,7 +136,7 @@
   </div>
 
   <div id="roomList">
-    <!-- Les salons existants seront affichés ici -->
+    <!-- Liste des salons existant -->
   </div>
 
   <div id="logout">
@@ -154,7 +154,6 @@
       window.location.href = "/";
     }
 
-    // Fonction pour charger la liste des salons
     function fetchRooms() {
       fetch(`/api/user-rooms?username=${encodeURIComponent(username)}`)
         .then(res => {
@@ -191,7 +190,6 @@
         });
     }
 
-    // Fonction pour rejoindre un salon
     function joinRoom(roomName) {
       fetch('/api/join-room', {
         method: 'POST',
@@ -208,7 +206,6 @@
       });
     }
 
-    // Fonction pour supprimer un salon (uniquement par le créateur)
     function deleteRoom(roomName) {
       if (!confirm(`Supprimer le salon "${roomName}" ?`)) return;
 

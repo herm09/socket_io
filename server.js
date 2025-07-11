@@ -17,8 +17,9 @@ const usersFile = path.join(__dirname, 'users.json');
 
 const roomsData = new Map();
 const rooms = new Map();
+const roomMessages = new Map(); 
 
-// Middleware
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -39,7 +40,10 @@ const loginLimiter = rateLimit({
   message: "Trop de tentatives, veuillez réessayer plus tard."
 });
 
-// --- Routes Auth ---
+
+
+
+// route d'authentification
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
@@ -92,7 +96,9 @@ app.post('/register', (req, res) => {
   res.send('<script>alert("Compte créé avec succès ! Vous pouvez maintenant vous connecter."); window.location.href="/";</script>');
 });
 
-// --- API Salons ---
+
+
+// API room
 app.get('/api/user-rooms', (req, res) => {
   const username = req.query.username;
   if (!username) return res.status(400).json({ error: 'Username required' });
@@ -156,10 +162,11 @@ app.post('/api/delete-room', (req, res) => {
   return res.status(200).json({ message: 'Room deleted' });
 });
 
-// --- Static ---
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Socket.io ---
+
+
+// Socket.io
 io.on('connection', (socket) => {
   socket.on('join room', ({ username, room }) => {
     if (!username || !room) return;
@@ -173,29 +180,42 @@ io.on('connection', (socket) => {
     if (!rooms.has(room)) rooms.set(room, new Set());
     rooms.get(room).add(username);
 
+    if (!roomMessages.has(room)) {
+      roomMessages.set(room, []);
+    }
+    socket.emit('chat history', roomMessages.get(room));
+
     if (!isAdminViewer) {
-      socket.to(room).emit('chat message', {
+      const systemMsg = {
         user: 'Système',
         text: `${username} a rejoint le salon.`,
         timestamp: new Date().toISOString()
-      });
+      };
+      roomMessages.get(room).push(systemMsg);
+      socket.to(room).emit('chat message', systemMsg);
     }
 
     io.emit('update rooms', getRoomData());
   });
 
-socket.on('chat message', (msg) => {
-  if (!socket.room || !socket.username || !msg.trim()) return;
+  socket.on('chat message', (msg) => {
+    if (!socket.room || !socket.username || !msg.trim()) return;
 
-  if (socket.username === 'admin_viewer') return;
+    if (socket.username === 'admin_viewer') return;
 
-  io.to(socket.room).emit('chat message', {
-    user: socket.username,
-    text: msg,
-    timestamp: new Date().toISOString()
+    const messageData = {
+      user: socket.username,
+      text: msg,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (!roomMessages.has(socket.room)) {
+      roomMessages.set(socket.room, []);
+    }
+    roomMessages.get(socket.room).push(messageData);
+
+    io.to(socket.room).emit('chat message', messageData);
   });
-});
-
 
   socket.on('disconnect', () => {
     if (socket.room && socket.username) {
@@ -206,11 +226,15 @@ socket.on('chat message', (msg) => {
       }
 
       if (socket.username !== 'admin_viewer') {
-        socket.to(socket.room).emit('chat message', {
+        const systemMsg = {
           user: 'Système',
           text: `${socket.username} a quitté le salon.`,
           timestamp: new Date().toISOString()
-        });
+        };
+        if (roomMessages.has(socket.room)) {
+          roomMessages.get(socket.room).push(systemMsg);
+        }
+        socket.to(socket.room).emit('chat message', systemMsg);
       }
 
       io.emit('update rooms', getRoomData());

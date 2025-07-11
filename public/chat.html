@@ -107,7 +107,7 @@
       👤 <span id="usernameDisplay"></span>
       🏠 <span id="roomDisplay"></span>
     </div>
-    <button id="logoutBtn" type="button">Déconnexion</button>
+    <button id="logoutBtn" type="button">Quitter</button>
   </div>
 
   <ul id="messages"></ul>
@@ -120,7 +120,6 @@
   <script>
     const socket = io();
 
-    // Récupérer username et room depuis l’URL
     const params = new URLSearchParams(window.location.search);
     const username = params.get('username');
     const room = params.get('room');
@@ -132,12 +131,10 @@
       window.location.href = '/';
     }
 
-    // Si lecture seule, on masque le formulaire d’envoi
     if (isReadonly) {
       document.getElementById('form').style.display = 'none';
     }
 
-    // Affichage header
     document.getElementById('usernameDisplay').textContent = username;
     document.getElementById('roomDisplay').textContent = room;
 
@@ -149,35 +146,41 @@
       }
     });
 
-
-    // Envoyer au serveur les infos de connexion avec le bon événement 'join room'
     socket.emit('join room', { username, room });
 
     const form = document.getElementById('form');
     const input = document.getElementById('input');
     const messages = document.getElementById('messages');
 
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (input.value.trim()) {
-        socket.emit('chat message', input.value.trim());
-        input.value = '';
-      }
-    });
-
-    // Fonction pour formater l'heure HH:mm
     function formatTimestamp(date) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
-    socket.on('chat message', (msg) => {
-      const item = document.createElement('li');
-      const timestamp = formatTimestamp(new Date());
-
-      // Structure : User : Message [heure]
-      item.innerHTML = `<strong>${msg.user} :</strong> ${msg.text} <span class="timestamp">${timestamp}</span>`;
-      messages.appendChild(item);
+    socket.on('chat history', (messagesHistory) => {
+      messagesHistory.forEach(msg => {
+        addMessage(msg);
+      });
       messages.scrollTop = messages.scrollHeight;
+    });
+
+    socket.on('chat message', (msg) => {
+      addMessage(msg);
+      messages.scrollTop = messages.scrollHeight;
+    });
+
+    function addMessage(msg) {
+      const item = document.createElement('li');
+      const timestamp = new Date(msg.timestamp);
+      item.innerHTML = `<strong>${msg.user} :</strong> ${msg.text} <span class="timestamp">${formatTimestamp(timestamp)}</span>`;
+      messages.appendChild(item);
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (input.value.trim()) {
+        socket.emit('chat message', input.value);
+        input.value = '';
+      }
     });
   </script>
 </body>
