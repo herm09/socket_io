@@ -100,7 +100,6 @@
     }
 
     function viewRoom(roomName) {
-      // Accès lecture seule : l’admin rejoint la room en tant que "admin_viewer" (non interactif)
       window.location.href = `chat.html?username=admin_viewer&room=${encodeURIComponent(roomName)}&readonly=true`;
     }
 
@@ -120,7 +119,6 @@
       });
     }
 
-    // Initialisation
     fetchAllRooms();
   </script>
 </body>

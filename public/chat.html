@@ -231,6 +231,8 @@
 
     function addMessage(msg) {
       const item = document.createElement('li');
+      item.dataset.timestamp = msg.timestamp;
+
       const timestamp = new Date(msg.timestamp);
 
       const container = document.createElement('div');
@@ -274,18 +276,16 @@
       }
     });
 
-    // Mise à jour de la liste des utilisateurs dans le volet
     function updateUsersList(users) {
       usersUl.innerHTML = '';
       users.forEach(user => {
-        if(user === 'admin_viewer') return; // exclure admin_viewer de la liste affichée
+        if(user === 'admin_viewer') return; 
         const li = document.createElement('li');
         li.textContent = user;
         usersUl.appendChild(li);
       });
     }
 
-    // Écoute de la mise à jour des utilisateurs dans la salle
     socket.on('room users', (users) => {
       updateUsersList(users);
     });

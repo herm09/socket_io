@@ -71,7 +71,7 @@ function readJSON(filePath) {
 loadRoomsFromFile();
 
 
-// route d'authentification
+// API auth
 app.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
@@ -230,7 +230,6 @@ io.on('connection', (socket) => {
       socket.to(room).emit('chat message', systemMsg);
     }
 
-    // Émettre la liste des utilisateurs de la room à TOUS les clients dans la room
     const activeUsers = Array.from(rooms.get(room)).filter(u => u !== 'admin_viewer');
     io.to(room).emit('room users', activeUsers);
 
@@ -258,7 +257,6 @@ io.on('connection', (socket) => {
 
   socket.on('delete message', ({ room, timestamp }) => {
     if (socket.username !== 'admin_viewer') {
-      // Seul admin_viewer peut supprimer
       return;
     }
     if (!roomMessages.has(room)) return;
@@ -268,14 +266,12 @@ io.on('connection', (socket) => {
 
     if (index === -1) return;
 
-    // Interdire suppression des messages système
     if (messages[index].user === 'Système') {
       return;
     }
     
     messages.splice(index, 1);
 
-    // Informer tous les clients dans la salle de la suppression
     io.to(room).emit('message deleted', { timestamp });
   });
 
@@ -324,7 +320,6 @@ function readJSON(filePath) {
   return JSON.parse(content);
 }
 
-// Lancer le serveur
 http.listen(PORT, () => {
-  console.log(`✅ Serveur démarré sur http://localhost:${PORT}`);
+  console.log(`Serveur démarré sur http://localhost:${PORT}`);
 });
