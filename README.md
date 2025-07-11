@@ -15,14 +15,14 @@ Ce projet est une application de chat en ligne développée avec **Node.js**, **
 
 ## 📁 Structure des dossiers
 
-├── public/ # Fichiers statiques (HTML, CSS, JS)
-│ ├── chat.html
-│ ├── admin.html
-│ ├── admin_login.html
-│ ├── index.html
-├── .env # Identifiants admin
-├── server.js # Serveur Express + Socket.IO
-├── package.json
+├── public/ # Fichiers statiques (HTML, CSS, JS)  
+│ ├── chat.html  
+│ ├── admin.html  
+│ ├── admin_login.html  
+│ ├── index.html  
+├── .env # Identifiants admin  
+├── server.js # Serveur Express + Socket.IO  
+├── package.json  
 
 
 ---
