@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 3000;
 const adminUser = process.env.ADMIN_USER;
 const adminPass = process.env.ADMIN_PASS;
 const usersFile = path.join(__dirname, 'users.json');
+const roomsFile = path.join(__dirname, 'rooms.json');
 
 const roomsData = new Map();
 const rooms = new Map();
@@ -40,7 +41,34 @@ const loginLimiter = rateLimit({
   message: "Trop de tentatives, veuillez réessayer plus tard."
 });
 
+function loadRoomsFromFile() {
+  const rooms = readJSON(roomsFile);
+  for (const [roomName, data] of Object.entries(rooms)) {
+    roomsData.set(roomName, {
+      owner: data.owner,
+      users: new Set(data.users || []),
+    });
+  }
+}
 
+function saveRoomsToFile() {
+  const obj = {};
+  for (const [roomName, data] of roomsData.entries()) {
+    obj[roomName] = {
+      owner: data.owner,
+      users: Array.from(data.users),
+    };
+  }
+  fs.writeFileSync(roomsFile, JSON.stringify(obj, null, 2));
+}
+
+function readJSON(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const content = fs.readFileSync(filePath, 'utf8');
+  return JSON.parse(content);
+}
+
+loadRoomsFromFile();
 
 
 // route d'authentification
@@ -115,12 +143,15 @@ app.get('/api/user-rooms', (req, res) => {
 });
 
 app.get('/api/admin-rooms', (req, res) => {
-  const rooms = readJSON('rooms.json');
-  const result = Object.values(rooms).map(room => ({
-    name: room.name,
-    owner: room.owner,
-    users: room.users.length,
-  }));
+  const result = [];
+  for (const [roomName, data] of roomsData.entries()) {
+    const activeUsers = rooms.has(roomName) ? rooms.get(roomName).size : 0;
+    result.push({
+      name: roomName,
+      owner: data.owner,
+      userCount: activeUsers,
+    });
+  }
   res.json(result);
 });
 
@@ -133,6 +164,8 @@ app.post('/api/create-room', (req, res) => {
   }
 
   roomsData.set(roomName, { owner: username, users: new Set() });
+  saveRoomsToFile();
+
   return res.status(201).json({ message: 'Room created' });
 });
 
@@ -144,6 +177,8 @@ app.post('/api/join-room', (req, res) => {
   if (!room) return res.status(404).json({ error: 'Room not found' });
 
   room.users.add(username);
+  saveRoomsToFile();
+
   return res.status(200).json({ message: 'Joined room' });
 });
 
@@ -219,6 +254,29 @@ io.on('connection', (socket) => {
     roomMessages.get(socket.room).push(messageData);
 
     io.to(socket.room).emit('chat message', messageData);
+  });
+
+  socket.on('delete message', ({ room, timestamp }) => {
+    if (socket.username !== 'admin_viewer') {
+      // Seul admin_viewer peut supprimer
+      return;
+    }
+    if (!roomMessages.has(room)) return;
+
+    const messages = roomMessages.get(room);
+    const index = messages.findIndex(m => m.timestamp === timestamp);
+
+    if (index === -1) return;
+
+    // Interdire suppression des messages système
+    if (messages[index].user === 'Système') {
+      return;
+    }
+    
+    messages.splice(index, 1);
+
+    // Informer tous les clients dans la salle de la suppression
+    io.to(room).emit('message deleted', { timestamp });
   });
 
   socket.on('disconnect', () => {

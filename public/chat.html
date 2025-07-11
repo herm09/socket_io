@@ -76,6 +76,21 @@
       margin-left: 0.5rem;
     }
 
+    .delete-btn {
+      background: #d9534f;
+      border: none;
+      color: white;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+      margin-left: 1rem;
+    }
+    .delete-btn:hover {
+      background: #c9302c;
+    }
+
     #form {
       background: rgba(0, 0, 0, 0.15);
       padding: 0.25rem;
@@ -109,7 +124,6 @@
       cursor: pointer;
     }
 
-    /* Volet des utilisateurs à droite */
     #usersList {
       width: 220px;
       border-left: 1px solid #ccc;
@@ -218,9 +232,39 @@
     function addMessage(msg) {
       const item = document.createElement('li');
       const timestamp = new Date(msg.timestamp);
-      item.innerHTML = `<strong>${msg.user} :</strong> ${msg.text} <span class="timestamp">${formatTimestamp(timestamp)}</span>`;
+
+      const container = document.createElement('div');
+      container.style.display = 'flex';
+      container.style.justifyContent = 'space-between';
+      container.style.alignItems = 'center';
+
+      const messageText = document.createElement('div');
+      messageText.innerHTML = `<strong>${msg.user} :</strong> ${msg.text} <span class="timestamp">${formatTimestamp(timestamp)}</span>`;
+
+      container.appendChild(messageText);
+
+      if (isReadonly && username === 'admin_viewer' && msg.user !== 'Système') {
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Supprimer';
+        delBtn.className = 'delete-btn';
+        delBtn.onclick = () => {
+          socket.emit('delete message', { room, timestamp: msg.timestamp });
+        };
+        container.appendChild(delBtn);
+      }
+
+      item.appendChild(container);
       messages.appendChild(item);
     }
+
+    socket.on('message deleted', ({ timestamp }) => {
+      const messageElements = messages.querySelectorAll('li');
+      messageElements.forEach(li => {
+        if (li.dataset.timestamp === timestamp) {
+          messages.removeChild(li);
+        }
+      });
+    });
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
